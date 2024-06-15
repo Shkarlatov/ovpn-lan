@@ -1,0 +1,5 @@
+*.log
+client_keys/
+*.crt
+*.key
+easyrsa3/*

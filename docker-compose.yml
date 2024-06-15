@@ -1,0 +1,15 @@
+services:
+  lan-vpn:
+    container_name: lan-vpn
+    restart: unless-stopped
+    image: lan-vpn
+    build:
+      context: .
+    ports:
+      #- "1190:1194/tcp"
+      - "1190:1194/udp"
+    volumes:
+      - ./openvpn:/etc/openvpn
+      - ./client_keys:/root/CLIENT_KEY
+      - ./easyrsa3/:/root/easyrsa3/
+    privileged: true
