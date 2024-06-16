@@ -6,7 +6,7 @@ services:
     build:
       context: .
     ports:
-      #- "1190:1194/tcp"
+      - "1190:1194/tcp"
       - "1190:1194/udp"
     volumes:
       - ./openvpn:/etc/openvpn
