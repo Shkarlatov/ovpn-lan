@@ -1,5 +1,6 @@
 *.log
-client_keys/
 *.crt
 *.key
-easyrsa3/*
+*.pem
+*.txt
+easyrsa/*

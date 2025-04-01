@@ -1,15 +1,30 @@
 services:
-  lan-vpn:
-    container_name: lan-vpn
+  ovpn-lan:
+    container_name: ovpn-lan
     restart: unless-stopped
-    image: lan-vpn
+    image: ovpn-lan:local
     build:
-      context: .
+        context: .
+        no_cache: false
+        pull: true
+        dockerfile_inline: |
+            FROM alpine:latest
+            WORKDIR /root
+            RUN apk add --no-cache bash openvpn easy-rsa
+            COPY ./init.sh /
+            COPY ./generate.sh /root
+            ENTRYPOINT ["/init.sh"]
+            EXPOSE 1194/udp
     ports:
-      - "1190:1194/tcp"
-      - "1190:1194/udp"
+      - "$SERVER_PORT:1194/udp"
     volumes:
-      - ./openvpn:/etc/openvpn
-      - ./client_keys:/root/CLIENT_KEY
-      - ./easyrsa3/:/root/easyrsa3/
-    privileged: true
+      - ./openvpn:/etc/openvpn/
+      - ./easyrsa:/root/easyrsa
+    privileged: false
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - SERVER_HOST=$SERVER_HOST
+      - SERVER_PORT=$SERVER_PORT

@@ -1,20 +1,27 @@
 #!/bin/bash
 set -e
 HERE="$(dirname "$(readlink -f "${0}")")"
-cd "$HERE/easyrsa3"
-
+cd "$HERE/easyrsa"
+export PATH="/usr/share/easy-rsa:$PATH"
 export EASYRSA_CERT_EXPIRE=3650
-
 set +e
 
-SERVER=""
-for i in 1 2 3 4 5;
-do
-    SERVER="$(curl -s -4 icanhazip.com)"
-    [[ "$?" == "0" ]] && break
-    sleep 2
-done
-[[ ! "$SERVER" ]] && echo "Can't determine global IP address!" && exit 8
+if [ -z "${SERVER_HOST}" ]; then
+    echo "SERVER_HOST is unset or empty"
+    SERVER_HOST=""
+    for i in 1 2 3 4 5;
+    do
+        SERVER_HOST="$(wget -qO - icanhazip.com)"
+        [[ "$?" == "0" ]] && break
+        sleep 2
+    done
+    [[ ! "$SERVER_HOST" ]] && echo "Can't determine global IP address!" && exit 8
+fi
+
+if [ -z "${SERVER_PORT}" ]; then
+    SERVER_PORT="1194"
+fi
+
 
 set -e
 
@@ -32,45 +39,81 @@ render() {
     done < $File
 }
 
-load_key() {
+build_pki() {
+    easyrsa init-pki
+    easyrsa gen-dh
+    EASYRSA_BATCH=1 EASYRSA_REQ_CN="ovpn-lan CA" easyrsa build-ca nopass
+    EASYRSA_BATCH=1 easyrsa build-server-full "server" nopass
+    easyrsa gen-crl
+    openvpn --genkey secret ./pki/tls-crypt.key
+}
+
+copy_keys() {
+    cp ./pki/ca.crt /etc/openvpn/keys/ca.crt
+    cp ./pki/dh.pem /etc/openvpn/keys/dh.pem
+    cp ./pki/issued/server.crt /etc/openvpn/keys/server.crt
+    cp ./pki/private/server.key /etc/openvpn/keys/server.key
+    cp ./pki/crl.pem /etc/openvpn/keys/crl.pem
+    cp ./pki/tls-crypt.key /etc/openvpn/keys/tls-crypt.key
+}
+
+if [ -z "$( ls -A './pki/' )" ]; then
+    echo "./pki/ is empty. Re-create"
+    build_pki
+fi
+
+if [[ ! -f "/etc/openvpn/keys/ca.crt" ]] && \
+   [[ ! -f "/etc/openvpn/keys/dh.pem" ]] && \
+   [[ ! -f "/etc/openvpn/keys/crl.pem" ]] && \
+   [[ ! -f "/etc/openvpn/keys/tls-crypt.key" ]] && \
+   [[ ! -f "/etc/openvpn/keys/server.crt" ]] && \
+   [[ ! -f "/etc/openvpn/keys/server.key" ]]
+then
+    copy_keys
+fi
+
+
+create_client() {
+    EASYRSA_BATCH=1 easyrsa build-client-full "$1" nopass
     CA_CERT=$(grep -A 999 'BEGIN CERTIFICATE' -- "pki/ca.crt")
-    CLIENT_CERT=$(grep -A 999 'BEGIN CERTIFICATE' -- "pki/issued/lan-vpn-client.crt")
-    CLIENT_KEY=$(cat -- "pki/private/lan-vpn-client.key")
+    CLIENT_CERT=$(grep -A 999 'BEGIN CERTIFICATE' -- "pki/issued/$1.crt")
+    CLIENT_KEY=$(cat -- "pki/private/$1.key")
+    CLIENT_TLS_CRYPT=$(grep -v '^#' -- "pki/tls-crypt.key")
     if [ ! "$CA_CERT" ] || [ ! "$CLIENT_CERT" ] || [ ! "$CLIENT_KEY" ]
     then
             echo "Can't load client keys!"
             exit 7
     fi
+    render "/etc/openvpn/client.conf" > "$1.ovpn"
+}
+revoke_client(){
+   EASYRSA_BATCH=1 easyrsa revoke $1
+   easyrsa gen-crl
+   copy_keys
+   killall -SIGHUP openvpn
+}
+list-client(){
+    ls -1 ./pki/issued/
+}
+status_client(){
+    cat /etc/openvpn/logs/status.log
 }
 
-build_pki() {
-    ./easyrsa init-pki
-    EASYRSA_BATCH=1 EASYRSA_REQ_CN="lan-vpn CA" ./easyrsa build-ca nopass
-    EASYRSA_BATCH=1 ./easyrsa build-server-full "lan-vpn-server" nopass nodatetime
-    EASYRSA_BATCH=1 ./easyrsa build-client-full "lan-vpn-client" nopass nodatetime
-}
-
-copy_keys() {
-    cp ./pki/ca.crt /etc/openvpn/server/keys/ca.crt
-    cp ./pki/issued/lan-vpn-server.crt /etc/openvpn/server/keys/lan-vpn-server.crt
-    cp ./pki/private/lan-vpn-server.key /etc/openvpn/server/keys/lan-vpn-server.key
-}
-
-if [[ ! -f ./pki/ca.crt ]]
-then
-    build_pki
-fi
-
-if [[ ! -f "/etc/openvpn/server/keys/ca.crt" ]] && \
-   [[ ! -f "/etc/openvpn/server/keys/lan-vpn-server.crt" ]] && \
-   [[ ! -f "/etc/openvpn/server/keys/lan-vpn-server.key" ]]
-then
-    copy_keys
-
-    load_key
-
-    cd ../
-
-    render "templates/openvpn-udp-unified.conf" > "CLIENT_KEY/lan-vpn-client-udp.ovpn"
-    render "templates/openvpn-tcp-unified.conf" > "CLIENT_KEY/lan-vpn-client-tcp.ovpn"
-fi
+cmd="$1"
+[ -n "$1" ] && shift # scrape off command
+case "$cmd" in
+	adduser)
+		create_client "$@"
+		;;
+    deluser)
+		revoke_client "$@"
+		;;
+    list-client)
+		list-client
+		;;
+    status)
+		status_client
+		;;
+	*)
+		;;
+esac
