@@ -55,6 +55,7 @@ copy_keys() {
     cp ./pki/private/server.key /etc/openvpn/keys/server.key
     cp ./pki/crl.pem /etc/openvpn/keys/crl.pem
     cp ./pki/tls-crypt.key /etc/openvpn/keys/tls-crypt.key
+    chmod 644 /etc/openvpn/keys/*
 }
 
 if [ -z "$( ls -A './pki/' )" ]; then
@@ -98,11 +99,16 @@ list-client(){
 status_client(){
     cat /etc/openvpn/logs/status.log
 }
+update-crl(){
+    easyrsa gen-crl
+    copy_keys
+    openssl crl -in /etc/openvpn/keys/crl.pem -noout -text | grep -A1 -B1 "Next Update"
+}
 
 cmd="$1"
 [ -n "$1" ] && shift # scrape off command
 case "$cmd" in
-	adduser)
+    adduser)
 		create_client "$@"
 		;;
     deluser)
@@ -113,6 +119,9 @@ case "$cmd" in
 		;;
     status)
 		status_client
+	;;
+    update-crl)
+		update-crl
 		;;
 	*)
 		;;

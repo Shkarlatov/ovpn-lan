@@ -1,0 +1,2 @@
+#!/bin/bash
+docker compose exec ovpn-lan /root/generate.sh $*
