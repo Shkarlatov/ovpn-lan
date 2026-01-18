@@ -4,3 +4,4 @@
 *.pem
 *.txt
 easyrsa/*
+.env

@@ -11,7 +11,7 @@ if [ -z "${SERVER_HOST}" ]; then
     SERVER_HOST=""
     for i in 1 2 3 4 5;
     do
-        SERVER_HOST="$(wget -qO - icanhazip.com)"
+        SERVER_HOST="$(wget -qO - https://ifconfig.me/ip)"
         [[ "$?" == "0" ]] && break
         sleep 2
     done
@@ -103,6 +103,7 @@ update-crl(){
     easyrsa gen-crl
     copy_keys
     openssl crl -in /etc/openvpn/keys/crl.pem -noout -text | grep -A1 -B1 "Next Update"
+    pkill -HUP openvpn || true
 }
 
 cmd="$1"
