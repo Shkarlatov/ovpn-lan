@@ -125,5 +125,7 @@ case "$cmd" in
 		update-crl
 		;;
 	*)
+		echo "Unknown command: $cmd"
+		echo "Available commands: adduser <name>, deluser <name>, list-client, status, update-crl"
 		;;
 esac
